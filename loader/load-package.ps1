@@ -138,11 +138,16 @@ try {
         $clone = Join-Path $work 'repo'
         Write-Host "Получаю $PackagesBranch/$packagePath из $Repo"
         $env:GIT_TERMINAL_PROMPT = '0'
-        # Без содержимого файлов: из ветки пакетов скачивается только нужный zip.
-        Invoke-Git clone --quiet --depth 1 --single-branch --branch $PackagesBranch --no-checkout --filter=blob:none $Repo $clone
-        if ($LASTEXITCODE -ne 0) { Fail "не удалось получить ветку $PackagesBranch из $Repo" }
+        # Только последний коммит ветки пакетов, одним запросом к серверу. Облегчённый клон (--filter) не подходит:
+        # checkout файла в нём не докачивает содержимое, а докачка — ещё один запрос с авторизацией.
+        Invoke-Git clone --quiet --depth 1 --single-branch --branch $PackagesBranch --no-checkout $Repo $clone
+        if ($LASTEXITCODE -ne 0) { Fail "не удалось получить ветку $PackagesBranch из $Repo (ошибка git выше). Проверьте URL и доступ к репозиторию." }
+        $entry = & git -C $clone ls-tree HEAD -- $packagePath
+        if (-not $entry) { Fail "в ветке $PackagesBranch нет пакета $packagePath" }
         Invoke-Git -C $clone checkout HEAD -- $packagePath
-        if ($LASTEXITCODE -ne 0) { Fail "в ветке $PackagesBranch нет пакета $packagePath" }
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path (Join-Path $clone $packagePath))) {
+            Fail "не удалось извлечь $packagePath из ветки $PackagesBranch (ошибка git выше)."
+        }
         $commit = & git -C $clone log -1 '--format=%h %cd %s' '--date=format:%d.%m.%Y %H:%M' -- $packagePath
         Write-Host "Пакет: $commit"
         $Package = Join-Path $clone $packagePath
