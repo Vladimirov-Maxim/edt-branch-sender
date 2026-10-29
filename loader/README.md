@@ -11,7 +11,8 @@
 | `load-package.cmd` | точка входа: запускает `load-package.ps1` с нужными параметрами PowerShell |
 | `load-package.ps1` | сам скрипт |
 
-Оба файла должны лежать в одном каталоге.
+Оба файла должны лежать в одном каталоге. Скачать их одним архивом — `load-package.zip` из
+[последнего релиза](https://github.com/Vladimirov-Maxim/edt-branch-sender/releases/latest).
 
 ## Что нужно на машине
 
