@@ -2,8 +2,8 @@
 # Запуск: powershell -File build.ps1 [-Install]
 param(
     [switch]$Install,
-    [string]$Pool = "$env:USERPROFILE\.p2\pool\plugins",
-    [string]$EdtDir = "$env:LOCALAPPDATA\1C\1cedtstart\installations\1C_EDT 2025.2\1cedt"
+    [string]$Pool = "C:\Program Files\Common Files\.p2\pool\plugins",
+    [string]$EdtDir = "C:\Program Files\1C\EDT\1C_EDT 2025.2\1cedt"
 )
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot

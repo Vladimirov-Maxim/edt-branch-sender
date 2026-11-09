@@ -48,7 +48,9 @@ param(
     # журнал конфигуратора; по умолчанию — во временном каталоге
     [string]$Log,
     # оставить распакованный пакет
-    [switch]$KeepTemp
+    [switch]$KeepTemp,
+    # база отстаёт от коммита базы: убрать из Configuration.xml объекты, которых нет ни в базе, ни в пакете
+    [switch]$FitToBase
 )
 
 $ErrorActionPreference = 'Stop'
@@ -167,6 +169,64 @@ try {
     }
     $files = @(if (Test-Path $xmlDir) { Get-ChildItem $xmlDir -Recurse -File | ForEach-Object FullName })
     if ($files.Count -eq 0) { Fail "в пакете нет файлов xml\: $Package" }
+
+    $configXml = Join-Path $xmlDir 'Configuration.xml'
+    if ($FitToBase -and (Test-Path $configXml)) {
+        # Configuration.xml пакета перечисляет все объекты ветки, а в отставшей базе части из них нет,
+        # и в пакете их файлов тоже нет — конфигуратор такую загрузку отвергает.
+        Write-Host 'Сверяю состав конфигурации с базой...'
+        $baseDump = Join-Path $work 'base'
+        $dumpList = Join-Path $work 'base-list.txt'
+        [IO.File]::WriteAllText($dumpList, "Configuration`r`n", (New-Object Text.UTF8Encoding $true))
+        $code = Invoke-Designer ('/DumpConfigToFiles ' + (Quote $baseDump) + ' -listFile ' + (Quote $dumpList))
+        if ($code -ne 0) { Fail "не удалось выгрузить Configuration.xml из базы (код $code)." }
+
+        $ns = @{ md = 'http://v8.1c.ru/8.3/MDClasses' }
+        $inBase = @{}
+        foreach ($n in (Select-Xml -Path (Join-Path $baseDump 'Configuration.xml') -XPath '//md:Configuration/md:ChildObjects/*' -Namespace $ns)) {
+            $inBase["$($n.Node.LocalName).$($n.Node.InnerText)"] = $true
+        }
+        # Объекты пакета: тип — корневой элемент файла объекта, имя — имя файла.
+        $inPackage = @{}
+        foreach ($f in Get-ChildItem $xmlDir -Directory | Get-ChildItem -Filter *.xml -File) {
+            $reader = [Xml.XmlReader]::Create($f.FullName)
+            try {
+                [void]$reader.MoveToContent()
+                while ($reader.Read() -and $reader.NodeType -ne [Xml.XmlNodeType]::Element) { }
+                $inPackage["$($reader.LocalName).$($f.BaseName)"] = $true
+            } finally { $reader.Dispose() }
+        }
+
+        $doc = New-Object Xml.XmlDocument
+        $doc.PreserveWhitespace = $true
+        $doc.Load($configXml)
+        $nsm = New-Object Xml.XmlNamespaceManager $doc.NameTable
+        $nsm.AddNamespace('md', $ns.md)
+        $removed = @()
+        foreach ($node in @($doc.SelectNodes('//md:Configuration/md:ChildObjects/*', $nsm))) {
+            $key = "$($node.LocalName).$($node.InnerText)"
+            if (-not $inBase[$key] -and -not $inPackage[$key]) {
+                [void]$node.ParentNode.RemoveChild($node)
+                $removed += $key
+            }
+        }
+        # Роли по умолчанию тоже ссылаются на объекты.
+        foreach ($item in @($doc.SelectNodes('//md:Configuration/md:Properties/md:DefaultRoles/*', $nsm))) {
+            $key = $item.InnerText
+            if ($removed -contains $key) { [void]$item.ParentNode.RemoveChild($item) }
+        }
+        if ($removed.Count -gt 0) {
+            $settings = New-Object Xml.XmlWriterSettings
+            $settings.Encoding = New-Object Text.UTF8Encoding $true
+            $writer = [Xml.XmlWriter]::Create($configXml, $settings)
+            try { $doc.Save($writer) } finally { $writer.Dispose() }
+            Write-Host "ВНИМАНИЕ: в базе нет объектов, которые есть в ветке и не входят в пакет; из Configuration.xml убрано: $($removed.Count)" -ForegroundColor Yellow
+            $removed | ForEach-Object { Write-Host "  $_" -ForegroundColor Yellow }
+            Write-Host '  Если код задачи обращается к ним, на этой базе он работать не будет.' -ForegroundColor Yellow
+        } else {
+            Write-Host 'Состав конфигурации совпадает с базой.'
+        }
+    }
 
     # Список для частичной загрузки — абсолютные пути, UTF-8.
     $listFile = Join-Path $work 'list.txt'
