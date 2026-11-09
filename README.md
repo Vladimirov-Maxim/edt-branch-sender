@@ -35,9 +35,9 @@
 1. Скачать `edtbranchsender_<версия>.jar` из [последнего релиза](https://github.com/Vladimirov-Maxim/edt-branch-sender/releases/latest).
 2. Закрыть EDT.
 3. Скопировать jar в каталог `dropins` установки EDT (создать, если его нет). Для EDT, установленной через
-   1C:EDT Start:
+   1C:EDT Start (системная установка):
    ```
-   %LOCALAPPDATA%\1C\1cedtstart\installations\<версия EDT>\1cedt\dropins
+   C:\Program Files\1C\EDT\<версия EDT>\1cedt\dropins
    ```
 4. Запустить EDT. В «Окно → Параметры» появится раздел **«Пакет изменений»**.
 
