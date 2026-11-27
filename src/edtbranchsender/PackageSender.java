@@ -35,6 +35,7 @@ public class PackageSender {
     public static class Settings {
         public String project;
         public String base;
+        public boolean checkSync = true;
         public boolean includeUncommitted;
         public boolean configurationModules;
         public String remote;
@@ -106,13 +107,16 @@ public class PackageSender {
 
         fetchBase(source.gitRoot, settings.base, log);
         checkBase(source.gitRoot, settings.base);
-        int behind = behind(source.gitRoot, settings.base);
-        if (behind > 0) {
-            throw new IllegalStateException("Ветка отстаёт от " + settings.base + " на " + behind + " коммит(ов)."
-                + " Подтяните " + settings.base + " в ветку задачи (merge или rebase) и отправьте снова.");
+        if (settings.checkSync) {
+            int behind = behind(source.gitRoot, settings.base);
+            if (behind > 0) {
+                throw new IllegalStateException("Ветка отстаёт от " + settings.base + " на " + behind + " коммит(ов)."
+                    + " Подтяните " + settings.base + " в ветку задачи (merge или rebase) и отправьте снова.");
+            }
+        } else {
+            log.line("Проверка синхронизации с базовой веткой отключена");
         }
-        // Коммит базы, который ветка содержит: на нём базу можно восстановить перед загрузкой пакета,
-        // даже если в базовую ветку с тех пор что-то слили.
+        // Коммит базовой ветки, относительно которого собран пакет.
         String baseCommit = Git.run(source.gitRoot, "rev-parse", settings.base + "^{commit}");
         String baseDate = Git.run(source.gitRoot, "log", "-1", "--format=%cd", "--date=format:%d.%m.%Y %H:%M",
             baseCommit);
@@ -174,7 +178,7 @@ public class PackageSender {
     }
 
     /**
-     * На сколько коммитов ветка задачи отстаёт от базы; -1 — базы нет. Отправлять можно только при 0:
+     * На сколько коммитов ветка задачи отстаёт от базы; -1 — базы нет. При включённой проверке требуется 0:
      * XML объекта и Configuration.xml берутся целиком из ветки задачи, и без свежей базы загрузка откатила бы
      * чужие правки, а объекты, добавленные в базу позже, выглядели бы удалёнными.
      */
