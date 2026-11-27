@@ -11,7 +11,9 @@ import org.eclipse.jface.dialogs.MessageDialog;
 import org.eclipse.jface.preference.IPersistentPreferenceStore;
 import org.eclipse.jface.preference.IPreferenceStore;
 import org.eclipse.jface.preference.PreferencePage;
+import org.eclipse.jface.resource.FontDescriptor;
 import org.eclipse.swt.SWT;
+import org.eclipse.swt.graphics.Font;
 import org.eclipse.swt.layout.GridData;
 import org.eclipse.swt.layout.GridLayout;
 import org.eclipse.swt.widgets.Button;
@@ -33,6 +35,7 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
 
     private static final String PROJECT = "project";
     private static final String BASE = "base";
+    private static final String CHECK_SYNC = "checkSync";
     private static final String INCLUDE_UNCOMMITTED = "includeUncommitted";
     private static final String CONFIGURATION_MODULES = "configurationModules";
     private static final String REMOTE = "remote";
@@ -45,8 +48,9 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
     private Text base;
     private Label branch;
     private Label sync;
-    /** Ветка задачи содержит базу (по последнему fetch); без этого кнопка неактивна. */
+    /** Проверка синхронизации пройдена (по последнему fetch) или отключена. */
     private boolean synced;
+    private Button checkSync;
     private Button includeUncommitted;
     private Button configurationModules;
     private Text remote;
@@ -62,6 +66,7 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
         IPreferenceStore store = getPreferenceStore();
         store.setDefault(PROJECT, "");
         store.setDefault(BASE, "origin/develop");
+        store.setDefault(CHECK_SYNC, true);
         store.setDefault(INCLUDE_UNCOMMITTED, true);
         store.setDefault(CONFIGURATION_MODULES, false);
         store.setDefault(REMOTE, "origin");
@@ -73,26 +78,39 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
         Composite page = new Composite(parent, SWT.NONE);
         page.setLayout(new GridLayout(1, false));
 
-        Group source = group(page, "Что отправить");
+        Group source = group(page, "Основная группа");
         new Label(source, SWT.NONE).setText("Проект EDT:");
         project = new Combo(source, SWT.READ_ONLY);
         project.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         project.setItems(new XmlExporter(Activator.getDefault()).configurationProjects().toArray(new String[0]));
-        base = field(source, "Сравнивать с:");
         new Label(source, SWT.NONE).setText("Ветка задачи:");
         branch = new Label(source, SWT.WRAP);
         branch.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
-        new Label(source, SWT.NONE).setText("Синхронизация:");
-        sync = new Label(source, SWT.WRAP);
-        sync.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
         includeUncommitted = check(source, "Включать незакоммиченные правки");
         configurationModules = check(source, "Включать модули конфигурации (модуль приложения, сеанса и т. п.)");
+
+        Group synchronization = group(page, "Синхронизация с базовой веткой");
+        checkSync = check(synchronization, "Требовать синхронизацию перед отправкой");
+        checkSync.setToolTipText("Перед выгрузкой требовать, чтобы ветка задачи содержала все коммиты базовой ветки");
+        base = field(synchronization, "Ветка сравнения:");
+        new Label(synchronization, SWT.NONE).setText("Состояние:");
+        sync = new Label(synchronization, SWT.WRAP);
+        sync.setLayoutData(new GridData(SWT.FILL, SWT.CENTER, true, false));
 
         Group target = group(page, "Куда отправить");
         remote = field(target, "Репозиторий:");
         remote.setToolTipText("Имя удалённого репозитория рабочей копии (origin) или URL отдельного репозитория");
         targetBranch = field(target, "Ветка пакетов:");
         targetBranch.setToolTipText("Существующая ветка без исходников проекта; пакет кладётся как <имя ветки задачи>.zip");
+
+        Font headingFont = FontDescriptor.createFrom(page.getFont()).setStyle(SWT.BOLD).createFont(page.getDisplay());
+        page.addDisposeListener(e -> headingFont.dispose());
+        for (Group group : new Group[] {source, synchronization, target}) {
+            for (Control child : group.getChildren()) {
+                child.setFont(page.getFont());
+            }
+            group.setFont(headingFont);
+        }
 
         Composite actions = new Composite(page, SWT.NONE);
         actions.setLayout(new GridLayout(3, false));
@@ -114,6 +132,7 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
         log.setLayoutData(logData);
 
         load(false);
+        checkSync.addListener(SWT.Selection, e -> refreshBranch());
         project.addListener(SWT.Selection, e -> refreshBranch());
         base.addListener(SWT.FocusOut, e -> refreshBranch());
         refreshBranch();
@@ -148,7 +167,9 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
     private void load(boolean defaults) {
         IPreferenceStore store = getPreferenceStore();
         selectProject(defaults ? store.getDefaultString(PROJECT) : store.getString(PROJECT));
-        base.setText(defaults ? store.getDefaultString(BASE) : store.getString(BASE));        includeUncommitted.setSelection(
+        base.setText(defaults ? store.getDefaultString(BASE) : store.getString(BASE));
+        checkSync.setSelection(defaults ? store.getDefaultBoolean(CHECK_SYNC) : store.getBoolean(CHECK_SYNC));
+        includeUncommitted.setSelection(
             defaults ? store.getDefaultBoolean(INCLUDE_UNCOMMITTED) : store.getBoolean(INCLUDE_UNCOMMITTED));
         configurationModules.setSelection(
             defaults ? store.getDefaultBoolean(CONFIGURATION_MODULES) : store.getBoolean(CONFIGURATION_MODULES));
@@ -170,7 +191,9 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
     private void save() {
         IPreferenceStore store = getPreferenceStore();
         store.setValue(PROJECT, project.getText().strip());
-        store.setValue(BASE, base.getText().strip());        store.setValue(INCLUDE_UNCOMMITTED, includeUncommitted.getSelection());
+        store.setValue(BASE, base.getText().strip());
+        store.setValue(CHECK_SYNC, checkSync.getSelection());
+        store.setValue(INCLUDE_UNCOMMITTED, includeUncommitted.getSelection());
         store.setValue(CONFIGURATION_MODULES, configurationModules.getSelection());
         store.setValue(REMOTE, remote.getText().strip());
         store.setValue(TARGET_BRANCH, targetBranch.getText().strip());
@@ -199,32 +222,38 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
     private void refreshBranch() {
         if (project.getText().isEmpty()) {
             branch.setText("в рабочей области нет проектов конфигурации");
+            sync.setText("");
             synced = false;
             updateSendButton();
-            branch.getParent().layout(true);
+            branch.getParent().getParent().layout(true, true);
             return;
         }
         synced = false;
         try {
             PackageSender.SourceState state = sender().sourceState(project.getText().strip());
             branch.setText(state.branch + ", коммит " + state.commit + (state.dirty ? " — есть незакоммиченные правки" : ""));
-            String baseName = base.getText().strip();
-            int behind = PackageSender.behind(state.gitRoot, baseName);
-            if (behind < 0) {
-                sync.setText("ветка сравнения " + baseName + " не найдена");
-            } else if (behind > 0) {
-                sync.setText("отстаёт от " + baseName + " на " + behind
-                    + " коммит(ов) — подтяните " + baseName + " в ветку задачи, иначе отправка недоступна");
+            if (checkSync.getSelection()) {
+                String baseName = base.getText().strip();
+                int behind = PackageSender.behind(state.gitRoot, baseName);
+                if (behind < 0) {
+                    sync.setText("ветка сравнения " + baseName + " не найдена");
+                } else if (behind > 0) {
+                    sync.setText("отстаёт от " + baseName + " на " + behind
+                        + " коммит(ов) — подтяните " + baseName + " в ветку задачи, иначе отправка недоступна");
+                } else {
+                    synced = true;
+                    sync.setText("содержит " + baseName + " (по последнему fetch; при отправке проверяется заново)");
+                }
             } else {
                 synced = true;
-                sync.setText("содержит " + baseName + " (по последнему fetch; при отправке проверяется заново)");
+                sync.setText("проверка отключена");
             }
         } catch (Exception e) {
             branch.setText("не определена: " + e.getMessage());
             sync.setText("");
         }
         updateSendButton();
-        branch.getParent().layout(true);
+        branch.getParent().getParent().layout(true, true);
     }
 
     private void updateSendButton() {
@@ -249,6 +278,7 @@ public class SenderPreferencePage extends PreferencePage implements IWorkbenchPr
         PackageSender.Settings settings = new PackageSender.Settings();
         settings.project = project.getText().strip();
         settings.base = base.getText().strip();
+        settings.checkSync = checkSync.getSelection();
         settings.includeUncommitted = includeUncommitted.getSelection();
         settings.configurationModules = configurationModules.getSelection();
         settings.remote = remote.getText().strip();

@@ -3,7 +3,7 @@ Bundle-ManifestVersion: 2
 Bundle-Name: EDT Branch Sender
 Bundle-Vendor: vlamax
 Bundle-SymbolicName: edtbranchsender;singleton:=true
-Bundle-Version: 0.2.0
+Bundle-Version: 0.2.3
 Bundle-Activator: edtbranchsender.Activator
 Bundle-ActivationPolicy: lazy
 Bundle-RequiredExecutionEnvironment: JavaSE-17
